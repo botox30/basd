@@ -1820,6 +1820,13 @@ class Ebay(Brand):
             )
         ).add_item(
             BrandTextInput(
+                label="Product Image Url",
+                custom_id="image",
+                prev_values=self.user_input.values,
+                check=input_validator.UserDataValidator.image,
+            )
+        ).add_item(
+            BrandTextInput(
                 label="Shipping Address",
                 custom_id="shipping_addr",
                 prev_values=self.user_input.values,
@@ -1951,7 +1958,7 @@ class Ebay(Brand):
 
         product = {
             "product_name": name,
-            "image": image,
+            "image": self.user_input.validated.get("image") or image,
         }
         return product
 
