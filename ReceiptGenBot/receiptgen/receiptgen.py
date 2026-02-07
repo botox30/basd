@@ -125,6 +125,7 @@ class Brand:
             url: Optional[str] = None,
             cookies: Optional[str] = None,
             params: Optional[dict] = None,
+            use_cache: bool = True,
     ):
         if headers is None:
             headers = self.default_headers
@@ -132,11 +133,12 @@ class Brand:
         if url is None:
             url = self.user_input.validated["url"]
 
-        scraped_db = database.ScrapedWebLink(url)
-        data = await scraped_db.get_scraped_content()
+        if use_cache:
+            scraped_db = database.ScrapedWebLink(url)
+            data = await scraped_db.get_scraped_content()
 
-        if data:
-            return data
+            if data:
+                return data
 
         try:
 
@@ -150,11 +152,12 @@ class Brand:
         except Exception as e:
             raise e
 
-        asyncio.create_task(
-            database.ScrapedWebLink(url).save_scraped_content(
-                content=data,
-                title=self.title,
-            ))
+        if use_cache:
+            asyncio.create_task(
+                database.ScrapedWebLink(url).save_scraped_content(
+                    content=data,
+                    title=self.title,
+                ))
 
         return data
 
@@ -1837,11 +1840,22 @@ class Ebay(Brand):
 
     async def scrape_web(self) -> dict:
         url = self.user_input.validated.get("url")
+        headers = {
+            **self.default_headers,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
 
         try:
-            data = await self.fetch_web(url=url, headers={})
+            data = await self.fetch_web(url=url, headers=headers)
         except Exception:
             raise utils.GenerationError("ebay_url")
+
+        if "Pardon Our Interruption" in data or "Access Denied" in data or "captcha" in data.lower():
+            try:
+                data = await self.fetch_web(url=url, headers=headers, use_cache=False)
+            except Exception:
+                raise utils.GenerationError("ebay_url")
 
         ebay_data = BeautifulSoup(data, 'html.parser')
 
