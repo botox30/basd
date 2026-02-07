@@ -1843,8 +1843,27 @@ class Ebay(Brand):
             raise utils.GenerationError("ebay_url")
 
         ebay_data = BeautifulSoup(data, 'html.parser')
-        name = ebay_data.find("span", class_="ux-textspans ux-textspans--BOLD").text
-        image = ebay_data.find("div", class_="ux-image-carousel-item").find("img")["src"]
+        
+        # Try multiple selectors for product name
+        name_tag = ebay_data.find("h1", class_="x-item-title__mainTitle")
+        if not name_tag:
+            name_tag = ebay_data.find("span", class_="ux-textspans ux-textspans--BOLD")
+        if not name_tag:
+            name_tag = ebay_data.find("title")
+            
+        name = name_tag.text.strip() if name_tag else "Unknown Product"
+        if " | eBay" in name:
+            name = name.split(" | eBay")[0]
+
+        # Try multiple selectors for image
+        image_tag = ebay_data.find("div", class_="ux-image-carousel-item")
+        if image_tag:
+            img = image_tag.find("img")
+            image = img["src"] if img else ""
+        else:
+            # Fallback image selector
+            img = ebay_data.find("img", {"id": "icImg"}) or ebay_data.find("img", class_="picture-wrapper__img")
+            image = img["src"] if img else ""
 
         product = {
             "product_name": name,
