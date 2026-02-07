@@ -1763,9 +1763,10 @@ class Ebay(Brand):
         modal = ReceiptModal(self) \
             .add_item(
             BrandTextInput(
-                label="Product Url",
+                label="Product Url (ebay.com only)",
                 custom_id="url",
                 prev_values=self.user_input.values,
+                placeholder="https://www.ebay.com/itm/204988757957",
                 check=input_validator.UserDataValidator.url,
                 check_args=("ebay.com/", "ebay_url")
             )
@@ -1820,10 +1821,11 @@ class Ebay(Brand):
             )
         ).add_item(
             BrandTextInput(
-                label="Product Image Url",
+                label="Product Image Url (optional)",
                 custom_id="image",
                 prev_values=self.user_input.values,
-                check=input_validator.UserDataValidator.image,
+                required=False,
+                check=input_validator.UserDataValidator.image_optional,
             )
         ).add_item(
             BrandTextInput(

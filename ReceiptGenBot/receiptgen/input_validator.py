@@ -141,3 +141,16 @@ class UserDataValidator:
         except (aiohttp.ClientError, aiohttp.InvalidURL, asyncio.TimeoutError):
             raise ValidationError("image_url")
 
+    @staticmethod
+    async def image_optional(url: str):
+        if not url:
+            return ""
+
+        try:
+            return await UserDataValidator.image(url)
+        except ValidationError:
+            parsed_url = urlparse(url)
+            if all([parsed_url.scheme, parsed_url.netloc]):
+                return url
+            raise
+
