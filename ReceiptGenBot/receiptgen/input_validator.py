@@ -78,11 +78,15 @@ class UserDataValidator:
     async def url(url: str, base_url: str, brand_url_name):
         url = url.strip()
         parsed_url = urlparse(url)
+        if not parsed_url.scheme and parsed_url.path:
+            parsed_url = urlparse(f"https://{url}")
+            url = parsed_url.geturl()
         if not all([parsed_url.scheme, parsed_url.netloc]):
             raise ValidationError(brand_url_name)
 
-        base_host = base_url.replace("https://", "").replace("http://", "").rstrip("/")
-        if base_url not in url and (not base_host or base_host not in parsed_url.netloc):
+        base_host = base_url.replace("https://", "").replace("http://", "").rstrip("/").lower()
+        netloc = parsed_url.netloc.lower()
+        if base_url.lower() not in url.lower() and (not base_host or base_host not in netloc):
             raise ValidationError(brand_url_name)
 
         return url
