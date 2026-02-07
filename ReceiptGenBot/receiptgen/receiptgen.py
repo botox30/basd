@@ -1843,6 +1843,28 @@ class Ebay(Brand):
             raise utils.GenerationError("ebay_url")
 
         ebay_data = BeautifulSoup(data, 'html.parser')
+
+        def normalize_image_url(raw_url: str) -> str:
+            if not raw_url:
+                return ""
+            if raw_url.startswith("//"):
+                raw_url = f"https:{raw_url}"
+            if ".webp" in raw_url:
+                raw_url = raw_url.replace(".webp", ".jpg")
+            return raw_url
+
+        def extract_image_url(img_tag) -> str:
+            if not img_tag:
+                return ""
+            for attribute in ("data-zoom-src", "data-src", "data-image-src", "data-img", "src"):
+                value = img_tag.get(attribute)
+                if value:
+                    return normalize_image_url(value)
+            srcset = img_tag.get("srcset")
+            if srcset:
+                candidate = srcset.split(",")[0].strip().split(" ")[0]
+                return normalize_image_url(candidate)
+            return ""
         
         # Try multiple selectors for product name
         name_tag = ebay_data.find("h1", class_="x-item-title__mainTitle")
@@ -1858,12 +1880,14 @@ class Ebay(Brand):
         # Try multiple selectors for image
         image_tag = ebay_data.find("div", class_="ux-image-carousel-item")
         if image_tag:
-            img = image_tag.find("img")
-            image = img["src"] if img else ""
+            image = extract_image_url(image_tag.find("img"))
         else:
             # Fallback image selector
             img = ebay_data.find("img", {"id": "icImg"}) or ebay_data.find("img", class_="picture-wrapper__img")
-            image = img["src"] if img else ""
+            image = extract_image_url(img)
+        if not image:
+            meta_image = ebay_data.find("meta", property="og:image")
+            image = normalize_image_url(meta_image["content"]) if meta_image and meta_image.get("content") else ""
 
         product = {
             "product_name": name,
