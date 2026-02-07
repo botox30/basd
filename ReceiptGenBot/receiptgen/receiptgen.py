@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import os
 import string
 from datetime import datetime, timedelta
@@ -1847,10 +1848,15 @@ class Ebay(Brand):
         def normalize_image_url(raw_url: str) -> str:
             if not raw_url:
                 return ""
+            raw_url = raw_url.strip()
+            if raw_url.startswith("data:"):
+                return ""
             if raw_url.startswith("//"):
                 raw_url = f"https:{raw_url}"
             if ".webp" in raw_url:
                 raw_url = raw_url.replace(".webp", ".jpg")
+            raw_url = re.sub(r"/s-l\d+(\.[a-zA-Z]{3,4})", r"/s-l500\1", raw_url)
+            raw_url = re.sub(r"/s-l\d+/", "/s-l500/", raw_url)
             return raw_url
 
         def extract_image_url(img_tag) -> str:
@@ -1862,8 +1868,46 @@ class Ebay(Brand):
                     return normalize_image_url(value)
             srcset = img_tag.get("srcset")
             if srcset:
-                candidate = srcset.split(",")[0].strip().split(" ")[0]
+                candidate = srcset.split(",")[-1].strip().split(" ")[0]
                 return normalize_image_url(candidate)
+            return ""
+
+        def extract_ld_json_image() -> str:
+            def find_image(payload) -> str:
+                if isinstance(payload, dict):
+                    image_value = payload.get("image") or payload.get("imageUrl")
+                    if image_value:
+                        if isinstance(image_value, list):
+                            for item in image_value:
+                                normalized = normalize_image_url(item)
+                                if normalized:
+                                    return normalized
+                        else:
+                            normalized = normalize_image_url(image_value)
+                            if normalized:
+                                return normalized
+                    for value in payload.values():
+                        found = find_image(value)
+                        if found:
+                            return found
+                elif isinstance(payload, list):
+                    for item in payload:
+                        found = find_image(item)
+                        if found:
+                            return found
+                return ""
+
+            for script_tag in ebay_data.find_all("script", type="application/ld+json"):
+                raw_payload = script_tag.string or script_tag.text or ""
+                if not raw_payload.strip():
+                    continue
+                try:
+                    payload = json.loads(raw_payload)
+                except json.JSONDecodeError:
+                    continue
+                image_url = find_image(payload)
+                if image_url:
+                    return image_url
             return ""
         
         # Try multiple selectors for product name
@@ -1885,6 +1929,8 @@ class Ebay(Brand):
             # Fallback image selector
             img = ebay_data.find("img", {"id": "icImg"}) or ebay_data.find("img", class_="picture-wrapper__img")
             image = extract_image_url(img)
+        if not image:
+            image = extract_ld_json_image()
         if not image:
             meta_image = ebay_data.find("meta", property="og:image")
             image = normalize_image_url(meta_image["content"]) if meta_image and meta_image.get("content") else ""
