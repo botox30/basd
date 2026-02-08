@@ -1765,6 +1765,13 @@ class Ebay(Brand):
             )
         ).add_item(
             BrandTextInput(
+                label="Product Image Link",
+                custom_id="image",
+                prev_values=self.user_input.values,
+                check=input_validator.UserDataValidator.image,
+            )
+        ).add_item(
+            BrandTextInput(
                 label="Price",
                 custom_id="price",
                 prev_values=self.user_input.values,
@@ -1835,7 +1842,7 @@ class Ebay(Brand):
     async def scrape_web(self) -> dict:
         await asyncio.sleep(1)
         name = self.user_input.validated.get("product_name", "Unknown Product")
-        image = ""
+        image = self.user_input.validated.get("image", "")
         product = {
             "product_name": name,
             "image": image,
