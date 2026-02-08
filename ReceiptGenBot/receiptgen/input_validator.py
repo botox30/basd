@@ -92,6 +92,12 @@ class UserDataValidator:
         return url
 
     @staticmethod
+    async def url_optional(url: str, base_url: str, brand_url_name):
+        if not url:
+            return ""
+        return await UserDataValidator.url(url, base_url, brand_url_name)
+
+    @staticmethod
     async def image(url: str):
         IMAGE_SIGNATURES = {
             b'\xff\xd8\xff': 'jpeg',  # JPEG

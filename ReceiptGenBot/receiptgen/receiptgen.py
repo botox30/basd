@@ -1763,11 +1763,12 @@ class Ebay(Brand):
         modal = ReceiptModal(self) \
             .add_item(
             BrandTextInput(
-                label="Product Url (ebay.com only)",
+                label="Product Url (optional, ebay.com only)",
                 custom_id="url",
                 prev_values=self.user_input.values,
                 placeholder="https://www.ebay.com/itm/204988757957",
-                check=input_validator.UserDataValidator.url,
+                required=False,
+                check=input_validator.UserDataValidator.url_optional,
                 check_args=("ebay.com/", "ebay_url")
             )
         ).add_item(
@@ -1849,6 +1850,11 @@ class Ebay(Brand):
 
     async def scrape_web(self) -> dict:
         url = self.user_input.validated.get("url")
+        if not url:
+            return {
+                "product_name": "Unknown Product",
+                "image": self.user_input.validated.get("image", ""),
+            }
         headers = {
             **self.default_headers,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
