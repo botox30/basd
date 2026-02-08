@@ -1765,13 +1765,6 @@ class Ebay(Brand):
             )
         ).add_item(
             BrandTextInput(
-                label="Product Image Link",
-                custom_id="image",
-                prev_values=self.user_input.values,
-                check=input_validator.UserDataValidator.image,
-            )
-        ).add_item(
-            BrandTextInput(
                 label="Price",
                 custom_id="price",
                 prev_values=self.user_input.values,
@@ -1810,6 +1803,13 @@ class Ebay(Brand):
                 label="Seller Name",
                 custom_id="seller_name",
                 prev_values=self.user_input.values,
+            )
+        ).add_item(
+            BrandTextInput(
+                label="Product Image Link",
+                custom_id="image",
+                prev_values=self.user_input.values,
+                check=input_validator.UserDataValidator.image,
             )
         ).add_item(
             BrandTextInput(
