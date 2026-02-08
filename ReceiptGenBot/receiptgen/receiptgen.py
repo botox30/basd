@@ -1759,11 +1759,9 @@ class Ebay(Brand):
         modal = ReceiptModal(self) \
             .add_item(
             BrandTextInput(
-                label="Product Url",
-                custom_id="url",
+                label="Product Name",
+                custom_id="product_name",
                 prev_values=self.user_input.values,
-                check=input_validator.UserDataValidator.url,
-                check_args=("ebay.com/", "ebay_url")
             )
         ).add_item(
             BrandTextInput(
@@ -1808,6 +1806,13 @@ class Ebay(Brand):
             )
         ).add_item(
             BrandTextInput(
+                label="Product Image Link",
+                custom_id="image",
+                prev_values=self.user_input.values,
+                check=input_validator.UserDataValidator.image,
+            )
+        ).add_item(
+            BrandTextInput(
                 label="Your name",
                 custom_id="name",
                 prev_values=self.user_input.values,
@@ -1835,36 +1840,9 @@ class Ebay(Brand):
         return modal
 
     async def scrape_web(self) -> dict:
-        url = self.user_input.validated.get("url")
-
-        try:
-            data = await self.fetch_web(url=url, headers={})
-        except Exception:
-            raise utils.GenerationError("ebay_url")
-
-        ebay_data = BeautifulSoup(data, 'html.parser')
-        
-        # Try multiple selectors for product name
-        name_tag = ebay_data.find("h1", class_="x-item-title__mainTitle")
-        if not name_tag:
-            name_tag = ebay_data.find("span", class_="ux-textspans ux-textspans--BOLD")
-        if not name_tag:
-            name_tag = ebay_data.find("title")
-            
-        name = name_tag.text.strip() if name_tag else "Unknown Product"
-        if " | eBay" in name:
-            name = name.split(" | eBay")[0]
-
-        # Try multiple selectors for image
-        image_tag = ebay_data.find("div", class_="ux-image-carousel-item")
-        if image_tag:
-            img = image_tag.find("img")
-            image = img["src"] if img else ""
-        else:
-            # Fallback image selector
-            img = ebay_data.find("img", {"id": "icImg"}) or ebay_data.find("img", class_="picture-wrapper__img")
-            image = img["src"] if img else ""
-
+        await asyncio.sleep(1)
+        name = self.user_input.validated.get("product_name", "Unknown Product")
+        image = self.user_input.validated.get("image", "")
         product = {
             "product_name": name,
             "image": image,
