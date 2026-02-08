@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import os
 import string
 from datetime import datetime, timedelta
@@ -124,6 +125,7 @@ class Brand:
             url: Optional[str] = None,
             cookies: Optional[str] = None,
             params: Optional[dict] = None,
+            use_cache: bool = True,
     ):
         if headers is None:
             headers = self.default_headers
@@ -131,11 +133,12 @@ class Brand:
         if url is None:
             url = self.user_input.validated["url"]
 
-        scraped_db = database.ScrapedWebLink(url)
-        data = await scraped_db.get_scraped_content()
+        if use_cache:
+            scraped_db = database.ScrapedWebLink(url)
+            data = await scraped_db.get_scraped_content()
 
-        if data:
-            return data
+            if data:
+                return data
 
         try:
 
@@ -149,11 +152,12 @@ class Brand:
         except Exception as e:
             raise e
 
-        asyncio.create_task(
-            database.ScrapedWebLink(url).save_scraped_content(
-                content=data,
-                title=self.title,
-            ))
+        if use_cache:
+            asyncio.create_task(
+                database.ScrapedWebLink(url).save_scraped_content(
+                    content=data,
+                    title=self.title,
+                ))
 
         return data
 
@@ -1759,10 +1763,12 @@ class Ebay(Brand):
         modal = ReceiptModal(self) \
             .add_item(
             BrandTextInput(
-                label="Product Url",
+                label="Product Url (optional, ebay.com only)",
                 custom_id="url",
                 prev_values=self.user_input.values,
-                check=input_validator.UserDataValidator.url,
+                placeholder="https://www.ebay.com/itm/204988757957",
+                required=False,
+                check=input_validator.UserDataValidator.url_optional,
                 check_args=("ebay.com/", "ebay_url")
             )
         ).add_item(
@@ -1816,6 +1822,14 @@ class Ebay(Brand):
             )
         ).add_item(
             BrandTextInput(
+                label="Product Image Url (optional)",
+                custom_id="image",
+                prev_values=self.user_input.values,
+                required=False,
+                check=input_validator.UserDataValidator.image_optional,
+            )
+        ).add_item(
+            BrandTextInput(
                 label="Shipping Address",
                 custom_id="shipping_addr",
                 prev_values=self.user_input.values,
@@ -1836,13 +1850,94 @@ class Ebay(Brand):
 
     async def scrape_web(self) -> dict:
         url = self.user_input.validated.get("url")
+        if not url:
+            return {
+                "product_name": "Unknown Product",
+                "image": self.user_input.validated.get("image", ""),
+            }
+        headers = {
+            **self.default_headers,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
 
         try:
-            data = await self.fetch_web(url=url, headers={})
+            data = await self.fetch_web(url=url, headers=headers)
         except Exception:
             raise utils.GenerationError("ebay_url")
 
+        if "Pardon Our Interruption" in data or "Access Denied" in data or "captcha" in data.lower():
+            try:
+                data = await self.fetch_web(url=url, headers=headers, use_cache=False)
+            except Exception:
+                raise utils.GenerationError("ebay_url")
+
         ebay_data = BeautifulSoup(data, 'html.parser')
+
+        def normalize_image_url(raw_url: str) -> str:
+            if not raw_url:
+                return ""
+            raw_url = raw_url.strip()
+            if raw_url.startswith("data:"):
+                return ""
+            if raw_url.startswith("//"):
+                raw_url = f"https:{raw_url}"
+            if ".webp" in raw_url:
+                raw_url = raw_url.replace(".webp", ".jpg")
+            raw_url = re.sub(r"/s-l\d+(\.[a-zA-Z]{3,4})", r"/s-l500\1", raw_url)
+            raw_url = re.sub(r"/s-l\d+/", "/s-l500/", raw_url)
+            return raw_url
+
+        def extract_image_url(img_tag) -> str:
+            if not img_tag:
+                return ""
+            for attribute in ("data-zoom-src", "data-src", "data-image-src", "data-img", "src"):
+                value = img_tag.get(attribute)
+                if value:
+                    return normalize_image_url(value)
+            srcset = img_tag.get("srcset")
+            if srcset:
+                candidate = srcset.split(",")[-1].strip().split(" ")[0]
+                return normalize_image_url(candidate)
+            return ""
+
+        def extract_ld_json_image() -> str:
+            def find_image(payload) -> str:
+                if isinstance(payload, dict):
+                    image_value = payload.get("image") or payload.get("imageUrl")
+                    if image_value:
+                        if isinstance(image_value, list):
+                            for item in image_value:
+                                normalized = normalize_image_url(item)
+                                if normalized:
+                                    return normalized
+                        else:
+                            normalized = normalize_image_url(image_value)
+                            if normalized:
+                                return normalized
+                    for value in payload.values():
+                        found = find_image(value)
+                        if found:
+                            return found
+                elif isinstance(payload, list):
+                    for item in payload:
+                        found = find_image(item)
+                        if found:
+                            return found
+                return ""
+
+            for script_tag in ebay_data.find_all("script", type="application/ld+json"):
+                raw_payload = script_tag.string or script_tag.text or ""
+                if not raw_payload.strip():
+                    continue
+                try:
+                    payload = json.loads(raw_payload)
+                except json.JSONDecodeError:
+                    continue
+                image_url = find_image(payload)
+                if image_url:
+                    return image_url
+            return ""
         
         # Try multiple selectors for product name
         name_tag = ebay_data.find("h1", class_="x-item-title__mainTitle")
@@ -1858,16 +1953,20 @@ class Ebay(Brand):
         # Try multiple selectors for image
         image_tag = ebay_data.find("div", class_="ux-image-carousel-item")
         if image_tag:
-            img = image_tag.find("img")
-            image = img["src"] if img else ""
+            image = extract_image_url(image_tag.find("img"))
         else:
             # Fallback image selector
             img = ebay_data.find("img", {"id": "icImg"}) or ebay_data.find("img", class_="picture-wrapper__img")
-            image = img["src"] if img else ""
+            image = extract_image_url(img)
+        if not image:
+            image = extract_ld_json_image()
+        if not image:
+            meta_image = ebay_data.find("meta", property="og:image")
+            image = normalize_image_url(meta_image["content"]) if meta_image and meta_image.get("content") else ""
 
         product = {
             "product_name": name,
-            "image": image,
+            "image": self.user_input.validated.get("image") or image,
         }
         return product
 

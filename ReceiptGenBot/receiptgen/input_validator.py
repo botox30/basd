@@ -76,10 +76,26 @@ class UserDataValidator:
 
     @staticmethod
     async def url(url: str, base_url: str, brand_url_name):
-        if base_url not in url:
+        url = url.strip()
+        parsed_url = urlparse(url)
+        if not parsed_url.scheme and parsed_url.path:
+            parsed_url = urlparse(f"https://{url}")
+            url = parsed_url.geturl()
+        if not all([parsed_url.scheme, parsed_url.netloc]):
+            raise ValidationError(brand_url_name)
+
+        base_host = base_url.replace("https://", "").replace("http://", "").rstrip("/").lower()
+        netloc = parsed_url.netloc.lower()
+        if base_url.lower() not in url.lower() and (not base_host or base_host not in netloc):
             raise ValidationError(brand_url_name)
 
         return url
+
+    @staticmethod
+    async def url_optional(url: str, base_url: str, brand_url_name):
+        if not url:
+            return ""
+        return await UserDataValidator.url(url, base_url, brand_url_name)
 
     @staticmethod
     async def image(url: str):
@@ -140,4 +156,13 @@ class UserDataValidator:
 
         except (aiohttp.ClientError, aiohttp.InvalidURL, asyncio.TimeoutError):
             raise ValidationError("image_url")
+
+    @staticmethod
+    async def image_optional(url: str):
+        if not url:
+            return ""
+        parsed_url = urlparse(url)
+        if all([parsed_url.scheme, parsed_url.netloc]):
+            return url
+        raise ValidationError("image_url")
 
